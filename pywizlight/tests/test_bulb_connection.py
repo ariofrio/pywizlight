@@ -2,8 +2,8 @@
 
 import asyncio
 import json
-from typing import AsyncGenerator, Tuple, cast
-from unittest.mock import patch
+from typing import Any, AsyncGenerator, Dict, Tuple, cast
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -168,3 +168,36 @@ async def test_concurrent_sends_replace_connection_once(bulb: wizlight) -> None:
         await asyncio.gather(bulb.getBulbConfig(), bulb.getBulbConfig())
     assert create_endpoint.call_count == 1
     assert bulb.transport is not None and bulb.transport is not old_transport
+
+
+@pytest.mark.asyncio
+async def test_registration_uses_current_source_ip(bulb: wizlight) -> None:
+    """Test push registration advertises the current source address."""
+    message: Dict[str, Any] = {
+        "method": "registration",
+        "params": {"phoneIp": "192.0.2.10", "register": True, "phoneMac": "aabb"},
+    }
+    with patch(
+        "pywizlight.bulb.get_source_ip", return_value=NEW_SOURCE_IP
+    ), patch.object(bulb, "send", AsyncMock()) as send:
+        await bulb._async_send_register(message)
+    assert send.call_args.args[0]["params"] == {
+        "phoneIp": NEW_SOURCE_IP,
+        "register": True,
+        "phoneMac": "aabb",
+    }
+    assert message["params"]["phoneIp"] == "192.0.2.10"
+
+
+@pytest.mark.asyncio
+async def test_registration_falls_back_when_source_unknown(bulb: wizlight) -> None:
+    """Test push registration keeps the original address when the route is unknown."""
+    message: Dict[str, Any] = {
+        "method": "registration",
+        "params": {"phoneIp": "192.0.2.10", "register": True, "phoneMac": "aabb"},
+    }
+    with patch("pywizlight.bulb.get_source_ip", return_value=None), patch.object(
+        bulb, "send", AsyncMock()
+    ) as send:
+        await bulb._async_send_register(message)
+    send.assert_awaited_once_with(message)

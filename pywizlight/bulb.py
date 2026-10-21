@@ -656,6 +656,8 @@ class wizlight:
 
     async def _async_send_register(self, message: dict) -> None:
         """Send the registration message."""
+        if source_ip := get_source_ip(self.ip):
+            message = {**message, "params": {**message["params"], "phoneIp": source_ip}}
         try:
             await self.send(message)
         except (WizLightTimeOutError, WizLightConnectionError) as ex:
